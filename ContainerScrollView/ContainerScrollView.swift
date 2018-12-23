@@ -148,7 +148,7 @@ public class NSKScrollView: UIScrollView {
         self.setNeedsLayout()
     }
     
-    public func removeAllSubviews(_ subview: UIView) {
+    public func removeAllManadgedSubviews() {
         self.removeAllObservableSubviews()
         for sv in self.contentView.subviews {
             sv.removeFromSuperview()
