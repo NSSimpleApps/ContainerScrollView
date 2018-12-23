@@ -33,26 +33,33 @@ class ViewController: UIViewController {
         container.topAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.topAnchor).isActive = true
         container.bottomAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.bottomAnchor).isActive = true
         
-        let label = UILabel()
-        label.text = "Fixed size Fixed size Fixed size Fixed size Fixed size Fixed size Fixed size"
-        label.numberOfLines = 0
-        label.backgroundColor = .red
+        let label1 = UILabel()
+        label1.text = "Fixed size Fixed size Fixed size Fixed size Fixed size Fixed size Fixed size"
+        label1.numberOfLines = 0
+        label1.backgroundColor = .red
         
-        container.addSimpleView(label)
+        container.addSimpleView(label1, inset: .custom(20))
+        
+        let label2 = UILabel()
+        label2.text = "Layout margin Layout margin Layout margin Layout margin Layout margin Layout margin Layout margin"
+        label2.numberOfLines = 0
+        label2.backgroundColor = .blue
+        
+        container.addSimpleView(label2, inset: .margin)
         
         let webView = WebViewBuilder.webView
-        container.addScrollableView(webView)
+        container.addScrollableView(webView, inset: .custom(0))
         
         
         let tvc1 = TableViewContoller(tag: 1)
         tvc1.view.backgroundColor = .yellow
-        container.addScrollableView(tvc1.view as! NSKScrollableView)
+        container.addScrollableView(tvc1.view as! NSKScrollableView, inset: .custom(0))
         
         self.addChild(tvc1)
         tvc1.didMove(toParent: self)
         
         let tvc2 = TableViewContoller(tag: 2)
-        container.addScrollableView(tvc2.view as! NSKScrollableView)
+        container.addScrollableView(tvc2.view as! NSKScrollableView, inset: .custom(0))
         
         self.addChild(tvc2)
         tvc2.didMove(toParent: self)

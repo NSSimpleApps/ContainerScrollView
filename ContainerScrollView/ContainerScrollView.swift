@@ -74,6 +74,10 @@ class NSKContainerScrollView: UIView {
 }
 
 public class NSKScrollView: UIScrollView {
+    public enum HorizontalInset {
+        case custom(CGFloat)
+        case margin
+    }
     private let contentView = NSKContainerScrollView()
     private var bottomConstraint: NSLayoutConstraint?
     private var observableSubviews: [NSKScrollableView] = []
@@ -99,14 +103,20 @@ public class NSKScrollView: UIScrollView {
         fatalError("init(coder:) has not been implemented")
     }
     
-    private func _addSimpleView(_ view: UIView) {
+    private func _addSimpleView(_ view: UIView, inset: HorizontalInset) {
         let topView = self.contentView.subviews.last
         
         view.translatesAutoresizingMaskIntoConstraints = false
         self.contentView.addSubview(view)
         
-        view.leftAnchor.constraint(equalTo: self.contentView.leftAnchor).isActive = true
-        view.rightAnchor.constraint(equalTo: self.contentView.rightAnchor).isActive = true
+        switch inset {
+        case .custom(let inset):
+            view.leftAnchor.constraint(equalTo: self.contentView.leftAnchor, constant: inset).isActive = true
+            view.rightAnchor.constraint(equalTo: self.contentView.rightAnchor, constant: -inset).isActive = true
+        case .margin:
+            view.leftAnchor.constraint(equalTo: self.contentView.layoutMarginsGuide.leftAnchor).isActive = true
+            view.rightAnchor.constraint(equalTo: self.contentView.layoutMarginsGuide.rightAnchor).isActive = true
+        }
         
         if let bottomConstraint = self.bottomConstraint {
             bottomConstraint.isActive = false
@@ -123,13 +133,13 @@ public class NSKScrollView: UIScrollView {
         self.bottomConstraint?.isActive = true
     }
     
-    public func addSimpleView(_ view: UIView) {
-        self._addSimpleView(view)
+    public func addSimpleView(_ view: UIView, inset: HorizontalInset) {
+        self._addSimpleView(view, inset: inset)
         self.setNeedsLayout()
     }
     
-    public func addScrollableView(_ view: NSKScrollableView) {
-        self._addSimpleView(view)
+    public func addScrollableView(_ view: NSKScrollableView, inset: HorizontalInset) {
+        self._addSimpleView(view, inset: inset)
         self.observableSubviews.append(view)
         view.heightAnchor.constraint(equalToConstant: 100).isActive = true
         
