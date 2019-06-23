@@ -141,7 +141,7 @@ public class NSKScrollView: UIScrollView {
     public func addScrollableView(_ view: NSKScrollableView, inset: HorizontalInset) {
         self._addSimpleView(view, inset: inset)
         self.observableSubviews.append(view)
-        view.heightAnchor.constraint(equalToConstant: 100).isActive = true
+        view.heightAnchor.constraint(equalToConstant: 1).isActive = true
         
         view.scrollView.isScrollEnabled = false
         view.scrollView.addObserver(self, forKeyPath: #keyPath(UIScrollView.contentSize), options: .old, context: &kScrollContext)
