@@ -7,84 +7,140 @@
 //
 
 import UIKit
+import WebKit
 
-class Scheduler {
-    class ScheduledOperation: Operation {
-        let delay: TimeInterval
-        let tag: Int
-        init(delay: TimeInterval, tag: Int) {
-            self.delay = delay
-            self.tag = tag
-            super.init()
-        }
-        override func cancel() {
-            self.completionBlock = nil
-            super.cancel()
-        }
-        override func main() {
-            Thread.sleep(forTimeInterval: self.delay)
-        }
-    }
-    let delay: TimeInterval
-    private let operationQueue = OperationQueue()
-    
-    init(delay: TimeInterval) {
-        self.delay = delay
-        //self.operationQueue.maxConcurrentOperationCount = 1
-    }
-    
-    func cancel() {
-        self.operationQueue.cancelAllOperations()
-    }
-    
-    func schedule(tag: Int, action: @escaping () -> Void) {
-        if self.operationQueue.operations.contains(where: { (operation) -> Bool in
-            return (operation as! ScheduledOperation).tag == tag
-        }) == false {
-            let op = ScheduledOperation(delay: self.delay, tag: tag)
-            op.completionBlock = {
-                DispatchQueue.main.async {
-                    action()
+public extension UIView {
+    func parentView<T: UIView>(ofType type: T.Type) -> T? {
+        var result = self.superview
+        while true {
+            if let sv = result {
+                if let parentView = sv as? T {
+                    return parentView
+                } else {
+                    result = sv.superview
                 }
+            } else {
+                break
             }
-            self.operationQueue.addOperation(op)
         }
-    }
-    
-    deinit {
-        self.cancel()
+        return nil
     }
 }
-
-public protocol NSKScrollableSubview where Self: UIView {
-    var scrollView: UIScrollView { get }
-}
-
-public typealias NSKScrollableView = UIView & NSKScrollableSubview
-
-private var kScrollContext: Int8 = 0
-
-class NSKContainerScrollView: UIView {
-    override func willRemoveSubview(_ subview: UIView) {
-        if let scrollView = self.superview as? NSKScrollView {
-            scrollView.removeObservableSubview(subview)
-        }
-        super.willRemoveSubview(subview)
+public extension UIScrollView {
+    var totalContentHeight: CGFloat {
+        let contentInset = self.contentInset
+        return self.contentSize.height + contentInset.top + contentInset.bottom
     }
 }
 
 public class NSKScrollView: UIScrollView {
+    public class ScrollViewContainer: UIView {
+        public let scrollableView: ScrollView
+        private let keyValueObservation: NSKeyValueObservation
+        
+        public init(scrollableView: ScrollView) {
+            self.scrollableView = scrollableView
+            let scrollView = scrollableView.scrollView
+            scrollView.isScrollEnabled = false
+            self.keyValueObservation = scrollView.observe(\UIScrollView.contentSize) { (sender, _) in
+                guard let parent = sender.parentView(ofType: ScrollViewContainer.self) else { return }
+                
+                DispatchQueue.main.async { [weak parent] in
+                    parent?.invalidateIntrinsicContentSize()
+                }
+            }
+            super.init(frame: .zero)
+            
+            self.preservesSuperviewLayoutMargins = true
+            let selfView = scrollableView.selfView
+            self.addSubview(selfView)
+            selfView.translatesAutoresizingMaskIntoConstraints = false
+            selfView.leftAnchor.constraint(equalTo: self.leftAnchor).isActive = true
+            selfView.rightAnchor.constraint(equalTo: self.rightAnchor).isActive = true
+            selfView.topAnchor.constraint(equalTo: self.topAnchor).isActive = true
+            selfView.bottomAnchor.constraint(equalTo: self.bottomAnchor).isActive = true
+        }
+        
+        required public init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+        override public var intrinsicContentSize: CGSize {
+            self.scrollableView.selfView.layoutIfNeeded()
+            let scrollView = self.scrollableView.scrollView
+            let size = scrollView.intrinsicContentSize
+            let height = max(0, scrollView.totalContentHeight)
+            return CGSize(width: size.width, height: height)
+        }
+        deinit {
+            self.keyValueObservation.invalidate()
+        }
+        
+        public override func willRemoveSubview(_ subview: UIView) {
+            super.willRemoveSubview(subview)
+            
+            if self.scrollableView.selfView == subview {
+                self.keyValueObservation.invalidate()
+                self.removeFromSuperview()
+            }
+        }
+    }
     public enum HorizontalInset {
         case custom(CGFloat)
         case margin
     }
-    private let contentView = NSKContainerScrollView()
-    private var bottomConstraint: NSLayoutConstraint?
-    private var observableSubviews: [NSKScrollableView] = []
-    private let scheduler = Scheduler(delay: 0.3)
+
+    public enum ScrollView {
+        case scrollView(UIScrollView)
+        case webView(WKWebView)
+        case collectionViewWrapper(UIView, UIScrollView)
+        
+        public init(scrollView: UIScrollView) {
+            self = .scrollView(scrollView)
+        }
+        public init(webView: WKWebView) {
+            self = .webView(webView)
+        }
+        public init?(collectionViewWrapper: UIView) {
+            if let scrollView = collectionViewWrapper.subviews.first(where: { (sv) -> Bool in
+                return sv is UIScrollView
+            }) {
+                self = .collectionViewWrapper(collectionViewWrapper, scrollView as! UIScrollView)
+            } else {
+                return nil
+            }
+        }
+        
+        public var scrollView: UIScrollView {
+            switch self {
+            case .scrollView(let scrollView):
+                return scrollView
+            case .webView(let webView):
+                return webView.scrollView
+            case .collectionViewWrapper(_, let scrollView):
+                return scrollView
+            }
+        }
+        public var selfView: UIView {
+            switch self {
+            case .scrollView(let scrollView):
+                return scrollView
+            case .webView(let webView):
+                return webView
+            case .collectionViewWrapper(let wrapper, _):
+                return wrapper
+            }
+        }
+    }
+    private let contentView = UIStackView()
     
     public override init(frame: CGRect) {
         super.init(frame: frame)
+        
+        self.preservesSuperviewLayoutMargins = true
+        self.contentView.axis = .vertical
+        self.contentView.alignment = .center
+        self.contentView.isLayoutMarginsRelativeArrangement = true
+        self.contentView.preservesSuperviewLayoutMargins = true
         
         self.contentView.translatesAutoresizingMaskIntoConstraints = false
         self.addSubview(self.contentView)
@@ -95,7 +151,7 @@ public class NSKScrollView: UIScrollView {
         self.contentView.widthAnchor.constraint(equalTo: self.widthAnchor).isActive = true
         
         let h = self.contentView.heightAnchor.constraint(equalTo: self.heightAnchor)
-        h.priority = .defaultLow
+        h.priority = .defaultLow - 1
         h.isActive = true
     }
     
@@ -103,106 +159,82 @@ public class NSKScrollView: UIScrollView {
         fatalError("init(coder:) has not been implemented")
     }
     
-    private func _addSimpleView(_ view: UIView, inset: HorizontalInset) {
-        let topView = self.contentView.subviews.last
-        
-        view.translatesAutoresizingMaskIntoConstraints = false
-        self.contentView.addSubview(view)
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        self.layoutMargins.top = 0
+        self.layoutMargins.bottom = 0
+    }
+    
+    private func configureInsets(view: UIView, inset: HorizontalInset) {
+        guard let superview = view.superview else { return }
         
         switch inset {
-        case .custom(let inset):
-            view.leftAnchor.constraint(equalTo: self.contentView.leftAnchor, constant: inset).isActive = true
-            view.rightAnchor.constraint(equalTo: self.contentView.rightAnchor, constant: -inset).isActive = true
+        case .custom(let custom):
+            view.leftAnchor.constraint(equalTo: superview.leftAnchor, constant: custom).isActive = true
+            view.rightAnchor.constraint(equalTo: superview.rightAnchor, constant: -custom).isActive = true
         case .margin:
-            view.leftAnchor.constraint(equalTo: self.contentView.layoutMarginsGuide.leftAnchor).isActive = true
-            view.rightAnchor.constraint(equalTo: self.contentView.layoutMarginsGuide.rightAnchor).isActive = true
+            view.leftAnchor.constraint(equalTo: superview.layoutMarginsGuide.leftAnchor).isActive = true
+            view.rightAnchor.constraint(equalTo: superview.layoutMarginsGuide.rightAnchor).isActive = true
         }
-        
-        if let bottomConstraint = self.bottomConstraint {
-            bottomConstraint.isActive = false
-            self.bottomConstraint = nil
-        }
-        
-        if let topView = topView {
-            view.topAnchor.constraint(equalTo: topView.bottomAnchor).isActive = true
-        } else {
-            view.topAnchor.constraint(equalTo: self.contentView.topAnchor).isActive = true
-        }
-        
-        self.bottomConstraint = view.bottomAnchor.constraint(lessThanOrEqualTo: self.contentView.bottomAnchor)
-        self.bottomConstraint?.isActive = true
     }
     
-    public func addSimpleView(_ view: UIView, inset: HorizontalInset) {
+    public func addEmptySpace(space: CGFloat) {
+        let emptySpace = UIView()
+        emptySpace.heightAnchor.constraint(equalToConstant: space).isActive = true
+        self._addSimpleView(emptySpace, inset: .custom(0))
+    }
+    public func _addSimpleView(_ view: UIView, inset: HorizontalInset) {
+        view.translatesAutoresizingMaskIntoConstraints = false
+        self.contentView.addArrangedSubview(view)
+        self.configureInsets(view: view, inset: inset)
+        self.updateConstraints()
+    }
+    
+    public func addSimpleView(_ view: UIView, inset: HorizontalInset, topSpace: CGFloat = 0) {
+        if topSpace > 0 {
+            self.addEmptySpace(space: topSpace)
+        }
         self._addSimpleView(view, inset: inset)
-        self.setNeedsLayout()
     }
     
-    public func addScrollableView(_ view: NSKScrollableView, inset: HorizontalInset) {
-        self._addSimpleView(view, inset: inset)
-        self.observableSubviews.append(view)
-        view.heightAnchor.constraint(equalToConstant: 1).isActive = true
-        
-        view.scrollView.isScrollEnabled = false
-        view.scrollView.addObserver(self, forKeyPath: #keyPath(UIScrollView.contentSize), options: .old, context: &kScrollContext)
-        self.setNeedsLayout()
+    private func prepareScrollableView(_ scrollableView: ScrollView) -> UIView {
+        return ScrollViewContainer(scrollableView: scrollableView)
+    }
+    public func addScrollableView(_ scrollableView: ScrollView, inset: HorizontalInset, topSpace: CGFloat = 0) {
+        let view = self.prepareScrollableView(scrollableView)
+        self.addSimpleView(view, inset: inset, topSpace: topSpace)
     }
     
-    public func removeAllManadgedSubviews() {
-        self.removeAllObservableSubviews()
-        for sv in self.contentView.subviews {
-            sv.removeFromSuperview()
+    public func insertSimpleView(_ view: UIView, inset: HorizontalInset, at index: Int) {
+        guard index >= 0 && index <= self.contentView.arrangedSubviews.count else {
+            return
+        }
+        self.contentView.insertArrangedSubview(view, at: index)
+        self.configureInsets(view: view, inset: inset)
+        self.updateConstraints()
+    }
+    
+    public func insertScrollableView(_ scrollableView: ScrollView, inset: HorizontalInset, at index: Int) {
+        guard index >= 0 && index <= self.contentView.arrangedSubviews.count else {
+            return
+        }
+        let view = self.prepareScrollableView(scrollableView)
+        self.insertSimpleView(view, inset: inset, at: index)
+    }
+    public var managedSubviews: [UIView] {
+        return self.contentView.arrangedSubviews.map { (arrangedSubview) -> UIView in
+            if let scrollViewContainer = arrangedSubview as? ScrollViewContainer {
+                return scrollViewContainer.scrollableView.selfView
+            } else {
+                return arrangedSubview
+            }
         }
     }
-    
-    public func removeSubview(_ subview: UIView) {
-        // TODO
-    }
-    
-    func removeObservableSubview(_ subview: UIView) {
-        if let index = self.observableSubviews.firstIndex(where: { (sv) -> Bool in
-            sv === subview
-            }) {
-            let observable = self.observableSubviews.remove(at: index)
-            observable.scrollView.removeObserver(self, forKeyPath: #keyPath(UIScrollView.contentSize), context: &kScrollContext)
-        }
-    }
-    
-    private func removeAllObservableSubviews() {
-        for observable in self.observableSubviews {
-            observable.scrollView.removeObserver(self, forKeyPath: #keyPath(UIScrollView.contentSize), context: &kScrollContext)
-        }
-        self.observableSubviews.removeAll()
-    }
-    
-    deinit {
-        self.scheduler.cancel()
-        self.removeAllObservableSubviews()
-    }
-    
-    public override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
-        if context == &kScrollContext {
-            guard let oldSize = change?[.oldKey] as? CGSize, let scrollView = object as? UIScrollView else {
-                return
-            }
-            guard scrollView.contentSize.height != oldSize.height else {
-                return
-            }
-            if let parent = self.observableSubviews.first(where: { (member) -> Bool in
-                member.scrollView === scrollView
-            }) {
-                self.scheduler.schedule(tag: parent.hashValue, action: { [weak scrollView, weak parent] in
-                    guard let scrollView = scrollView, let parent = parent else { return }
-                    
-                    if let constraint = parent.constraints.first(where: { (c) -> Bool in
-                        return c.firstAttribute == .height
-                    }) {
-                        constraint.constant = scrollView.contentSize.height
-                    }
-                })
-            }
-        } else {
-            super.observeValue(forKeyPath: keyPath, of: object, change: change, context: context)
+    public func removeAllManagedSubviews() {
+        let arrangedSubviews = self.contentView.arrangedSubviews
+        for arrangedSubview in arrangedSubviews {
+            self.contentView.removeArrangedSubview(arrangedSubview)
+            arrangedSubview.removeFromSuperview()
         }
     }
 }

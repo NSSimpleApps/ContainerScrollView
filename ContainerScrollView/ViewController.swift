@@ -9,15 +9,6 @@
 import UIKit
 import WebKit
 
-extension UIScrollView: NSKScrollableSubview {
-    public var scrollView: UIScrollView {
-        return self
-    }
-}
-extension WKWebView: NSKScrollableSubview {
-}
-
-
 class ViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -37,29 +28,27 @@ class ViewController: UIViewController {
         label1.text = "Fixed size Fixed size Fixed size Fixed size Fixed size Fixed size Fixed size"
         label1.numberOfLines = 0
         label1.backgroundColor = .red
-        
         container.addSimpleView(label1, inset: .custom(20))
         
         let label2 = UILabel()
         label2.text = "Layout margin Layout margin Layout margin Layout margin Layout margin Layout margin Layout margin"
         label2.numberOfLines = 0
         label2.backgroundColor = .blue
-        
         container.addSimpleView(label2, inset: .margin)
         
         let webView = WebViewBuilder.webView
-        container.addScrollableView(webView, inset: .custom(0))
+        container.addScrollableView(.webView(webView), inset: .custom(0))
         
         
         let tvc1 = TableViewContoller(tag: 1)
         tvc1.view.backgroundColor = .yellow
-        container.addScrollableView(tvc1.view as! NSKScrollableView, inset: .custom(0))
+        container.addScrollableView(.scrollView(tvc1.tableView), inset: .custom(0))
         
         self.addChild(tvc1)
         tvc1.didMove(toParent: self)
         
         let tvc2 = TableViewContoller(tag: 2)
-        container.addScrollableView(tvc2.view as! NSKScrollableView, inset: .custom(0))
+        container.addScrollableView(.scrollView(tvc2.tableView), inset: .custom(0))
         
         self.addChild(tvc2)
         tvc2.didMove(toParent: self)
